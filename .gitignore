@@ -1,0 +1,21 @@
+# env
+.env
+
+# python
+__pycache__/
+*.pyc
+
+# streamlit
+.streamlit/
+
+# chroma
+chroma_db/
+
+# logs
+logs/
+
+# data (opcional)
+data/
+
+# OS
+.DS_Store
