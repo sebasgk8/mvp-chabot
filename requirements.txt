@@ -5,5 +5,6 @@ python-dotenv
 pypdf
 pdfplumber
 python-docx
-tiktoken==0.6.0
-pillow==10.3.0
+tiktoken
+pillow
+protobuf==3.20.3
