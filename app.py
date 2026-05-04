@@ -34,6 +34,11 @@ collection = client.get_collection(
     embedding_function=embedding_function
 )
 
+st.sidebar.title("🔍 Debug Chroma")
+
+st.sidebar.write("📦 Total docs en Chroma:")
+st.sidebar.write(collection.count())
+
 llm = OpenAI(api_key=OPENAI_API_KEY)
 
 # ==========================
