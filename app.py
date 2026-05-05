@@ -104,6 +104,8 @@ ensure_db()
 # ==========================
 st.sidebar.write("📦 COUNT:", collection.count())
 
+st.write(client.list_collections())
+
 import os
 st.sidebar.write("📁 EXISTS:", os.path.exists(CHROMA_PATH))
 
