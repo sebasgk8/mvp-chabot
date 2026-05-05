@@ -20,6 +20,31 @@ LOG_DIR = os.getenv("LOG_DIR", "./logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # ==========================
+# CLONE CHROMA DB (PRIVATE REPO)
+# ==========================
+import subprocess
+
+def clone_chroma():
+    if os.path.exists(CHROMA_PATH):
+        return  # ya existe
+
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_url = f"https://{token}@github.com/sebasgk8/chroma-db-private.git"
+
+        subprocess.run(
+            ["git", "clone", repo_url, CHROMA_PATH],
+            check=True
+        )
+
+        st.write("✅ Chroma DB clonado desde repo privado")
+
+    except Exception as e:
+        st.error(f"❌ Error clonando Chroma DB: {e}")
+
+clone_chroma()
+
+# ==========================
 # INIT
 # ==========================
 client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -34,12 +59,56 @@ collection = client.get_collection(
     embedding_function=embedding_function
 )
 
-st.sidebar.title("🔍 Debug Chroma")
-
-st.sidebar.write("📦 Total docs en Chroma:")
-st.sidebar.write(collection.count())
-
 llm = OpenAI(api_key=OPENAI_API_KEY)
+
+# ==========================
+# AUTO INGEST (MVP FIX)
+# ==========================
+from ingest import ingest
+import os
+
+DATA_PATH = "./data"  # asegúrate de que existe en tu repo
+
+def ensure_db():
+    try:
+        count = collection.count()
+        st.write(f"📦 Chroma count inicial: {count}")
+
+        if count == 0:
+            st.warning("⚠️ Chroma vacío, ejecutando ingest...")
+
+            if not os.path.exists(DATA_PATH):
+                st.error(f"No existe carpeta de datos: {DATA_PATH}")
+                return
+
+            files = [f for f in os.listdir(DATA_PATH) if f.endswith((".pdf", ".docx"))]
+
+            if not files:
+                st.error("No hay documentos en /data")
+                return
+
+            for f in files:
+                st.write(f"📄 Ingestando: {f}")
+                ingest(os.path.join(DATA_PATH, f))
+
+            st.success("✅ Ingest completado")
+
+    except Exception as e:
+        st.error(f"Ingest error: {e}")
+
+
+ensure_db()
+
+# ==========================
+# DEBUG CHROMA
+# ==========================
+st.sidebar.write("📦 COUNT:", collection.count())
+
+import os
+st.sidebar.write("📁 EXISTS:", os.path.exists(CHROMA_PATH))
+
+if os.path.exists(CHROMA_PATH):
+    st.sidebar.write("📂 FILES:", os.listdir(CHROMA_PATH)[:5])
 
 # ==========================
 # SESSION ID (CLAVE NUEVA)
