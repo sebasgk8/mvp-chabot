@@ -23,81 +23,55 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # CLONE CHROMA DB (PRIVATE REPO)
 # ==========================
 import subprocess
+import time
 
 def clone_chroma():
-    if os.path.exists(CHROMA_PATH):
-        return  # ya existe
+    if os.path.exists(CHROMA_PATH) and os.path.exists(f"{CHROMA_PATH}/chroma.sqlite3"):
+        return
 
     try:
         token = st.secrets["GITHUB_TOKEN"]
-        repo_url = f"https://{token}@github.com/sebasgk8/chroma-db-private.git"
+        repo_url = f"https://{token}@github.com/TU_USER/chroma-db-private.git"
 
         subprocess.run(
             ["git", "clone", repo_url, CHROMA_PATH],
             check=True
         )
 
-        st.write("✅ Chroma DB clonado desde repo privado")
+        # 🔥 IMPORTANTE: forzar sync filesystem en Streamlit
+        time.sleep(2)
+
+        st.write("✅ Chroma DB clonado correctamente")
 
     except Exception as e:
         st.error(f"❌ Error clonando Chroma DB: {e}")
 
 clone_chroma()
 
+
 # ==========================
 # INIT
 # ==========================
 client = chromadb.PersistentClient(path=CHROMA_PATH)
+collection = client.get_collection("documents") 
+st.write("COUNT:", collection.count())
 
-embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-    api_key=OPENAI_API_KEY,
-    model_name="text-embedding-3-large"
-)
+# 🔍 VERIFICACIÓN REAL EN RUNTIME (NUEVO)
+st.write("📦 Collections detectadas:", [c.name for c in client.list_collections()])
 
+# 🎯 FORZAR USO DE COLECCIÓN CORRECTA (FIX)
 collection = client.get_collection(
-    name=COLLECTION_NAME,
-    embedding_function=embedding_function
+    name="documents",
+    embedding_function=embedding_functions.OpenAIEmbeddingFunction(
+        api_key=OPENAI_API_KEY,
+        model_name="text-embedding-3-large"
+    )
 )
+
+st.write("📊 COUNT documents:", collection.count())
 
 llm = OpenAI(api_key=OPENAI_API_KEY)
 
-# ==========================
-# AUTO INGEST (MVP FIX)
-# ==========================
-from ingest import ingest
-import os
-
-DATA_PATH = "./data"  # asegúrate de que existe en tu repo
-
-def ensure_db():
-    try:
-        count = collection.count()
-        st.write(f"📦 Chroma count inicial: {count}")
-
-        if count == 0:
-            st.warning("⚠️ Chroma vacío, ejecutando ingest...")
-
-            if not os.path.exists(DATA_PATH):
-                st.error(f"No existe carpeta de datos: {DATA_PATH}")
-                return
-
-            files = [f for f in os.listdir(DATA_PATH) if f.endswith((".pdf", ".docx"))]
-
-            if not files:
-                st.error("No hay documentos en /data")
-                return
-
-            for f in files:
-                st.write(f"📄 Ingestando: {f}")
-                ingest(os.path.join(DATA_PATH, f))
-
-            st.success("✅ Ingest completado")
-
-    except Exception as e:
-        st.error(f"Ingest error: {e}")
-
-
-ensure_db()
 
 # ==========================
 # DEBUG CHROMA
