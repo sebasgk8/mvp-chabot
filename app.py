@@ -25,36 +25,81 @@ os.makedirs(LOG_DIR, exist_ok=True)
 import subprocess
 import time
 
-def clone_chroma():
-    if os.path.exists(CHROMA_PATH) and os.path.exists(f"{CHROMA_PATH}/chroma.sqlite3"):
-        return
+@st.cache_resource(show_spinner=False)
+def clone_chroma_atomic():
+    TMP_PATH = "./chroma_tmp"
+
+    # limpiar tmp si quedó basura
+    if os.path.exists(TMP_PATH):
+        subprocess.run(["rm", "-rf", TMP_PATH])
+
+    if os.path.exists(CHROMA_PATH):
+        # ya existe → validar integridad
+        if os.path.exists(f"{CHROMA_PATH}/chroma.sqlite3"):
+            return CHROMA_PATH
+
+        # corrupto → borrar
+        subprocess.run(["rm", "-rf", CHROMA_PATH])
 
     try:
         token = st.secrets["GITHUB_TOKEN"]
-        repo_url = f"https://{token}@github.com/TU_USER/chroma-db-private.git"
+        repo_url = f"https://{token}@github.com/sebasgk8/chroma-db-private.git"
 
+        # 🔥 CLONE A TEMP (CLAVE)
         subprocess.run(
-            ["git", "clone", repo_url, CHROMA_PATH],
+            ["git", "clone", "--depth", "1", repo_url, TMP_PATH],
             check=True
         )
 
-        # 🔥 IMPORTANTE: forzar sync filesystem en Streamlit
-        time.sleep(2)
+        # 🔍 VALIDACIÓN REAL
+        if not os.path.exists(f"{TMP_PATH}/chroma.sqlite3"):
+            raise Exception("❌ DB incompleta: falta chroma.sqlite3")
 
-        st.write("✅ Chroma DB clonado correctamente")
+        size = os.path.getsize(f"{TMP_PATH}/chroma.sqlite3")
+        if size < 1000000:
+            raise Exception(f"❌ DB sospechosa (muy pequeña): {size} bytes")
+
+        # 🔥 MOVE ATÓMICO
+        os.rename(TMP_PATH, CHROMA_PATH)
+
+        return CHROMA_PATH
 
     except Exception as e:
-        st.error(f"❌ Error clonando Chroma DB: {e}")
-
-clone_chroma()
+        st.error(f"🔥 ERROR CLONE: {e}")
+        raise
 
 
 # ==========================
 # INIT
 # ==========================
+# 🔥 CLONE SEGURO
+clone_chroma_atomic()
+
+# 🔥 FORZAR RELOAD FS
+time.sleep(1)
+
 client = chromadb.PersistentClient(path=CHROMA_PATH)
-collection = client.get_collection("documents") 
-st.write("COUNT:", collection.count())
+# 🔥 DEBUG REAL
+collections = client.list_collections()
+st.write("📦 Collections detectadas:", [c.name for c in collections])
+
+if not collections:
+    st.error("❌ No hay colecciones → clone falló")
+
+# 🔥 FORZAR COLECCIÓN
+collection = client.get_collection(
+    name="documents",
+    embedding_function=embedding_functions.OpenAIEmbeddingFunction(
+        api_key=OPENAI_API_KEY,
+        model_name="text-embedding-3-large"
+    )
+)
+
+count = collection.count()
+st.write("📊 COUNT documents:", count)
+
+if count == 0:
+    st.error("❌ DB VACÍA → clone incorrecto o DB corrupta")
 
 # 🔍 VERIFICACIÓN REAL EN RUNTIME (NUEVO)
 st.write("📦 Collections detectadas:", [c.name for c in client.list_collections()])
@@ -69,6 +114,8 @@ collection = client.get_collection(
 )
 
 st.write("📊 COUNT documents:", collection.count())
+import gc
+gc.collect()
 
 llm = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -85,6 +132,13 @@ st.sidebar.write("📁 EXISTS:", os.path.exists(CHROMA_PATH))
 
 if os.path.exists(CHROMA_PATH):
     st.sidebar.write("📂 FILES:", os.listdir(CHROMA_PATH)[:5])
+
+# 🔍 VERIFICACIÓN REAL DISCO
+if os.path.exists(f"{CHROMA_PATH}/chroma.sqlite3"):
+    size = os.path.getsize(f"{CHROMA_PATH}/chroma.sqlite3")
+    st.sidebar.write("📦 DB SIZE:", size)
+else:
+    st.sidebar.write("❌ NO EXISTE chroma.sqlite3")
 
 # ==========================
 # SESSION ID (CLAVE NUEVA)
